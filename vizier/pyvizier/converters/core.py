@@ -708,9 +708,34 @@ class DefaultModelOutputConverter(ModelOutputConverter):
       labels -= self._original_metric_information.safety_threshold
     return labels * (-1 if self._should_flip_sign else 1)
 
+  def to_metrics(self,
+                 labels: np.ndarray) -> Sequence[Optional[pyvizier.Metric]]:
+    """Converts an array of labels to pyvizier Metrics.
+
+    Args:
+      labels: (len(metrics),) or (len(metrics), 1) shaped array of labels.
+
+    Returns:
+      metrics: a list of pyvizier metrics.
+    """
+    if labels.ndim == 1:
+      labels = labels[:, None]
+    if labels.shape[1] > 1 or len(labels.shape) > 2:
+      raise ValueError('The input array must be of shape (num,) or (num, 1).')
+    labels = labels.flatten()
+    if (self.shift_safe_metrics and
+        self._original_metric_information.type.is_safety):
+      labels += self._original_metric_information.safety_threshold
+    labels = labels * (-1 if self._should_flip_sign else 1)
+
+    metrics = [
+        pyvizier.Metric(value=l) if np.isfinite(l) else None for l in labels
+    ]
+    return metrics
+
   @property
   def metric_information(self) -> pyvizier.MetricInformation:
-    """Returns a copy that reflects how the converter treates the metric."""
+    """Returns a copy that reflects how the converter treats the metric."""
     metric_information = copy.deepcopy(self._original_metric_information)
     if self._should_flip_sign:
       metric_information = metric_information.flip_goal()

@@ -306,6 +306,69 @@ class DefaultModelOutputConverterTest(parameterized.TestCase):
                         dtype=np.float32) * (-1 if flip_sign else 1)
     np.testing.assert_equal(actual, expected)
 
+  @parameterized.parameters([
+      dict(flip_sign=True, raise_error=True),
+      dict(flip_sign=False, raise_error=True),
+      dict(flip_sign=True, raise_error=False),
+      dict(flip_sign=False, raise_error=False)
+  ])
+  def test_to_metrics(self, flip_sign: bool, raise_error: bool):
+    expected = [
+        pyvizier.Metric(1.0),
+        pyvizier.Metric(2.0),
+        None,
+        pyvizier.Metric(4.0),
+        None,
+    ]
+    converter = core.DefaultModelOutputConverter(
+        pyvizier.MetricInformation(
+            name='metric1', goal=pyvizier.ObjectiveMetricGoal.MINIMIZE),
+        flip_sign_for_minimization_metrics=flip_sign,
+        raise_errors_for_missing_metrics=raise_error,
+        dtype=float)
+    arr = np.array([[1.0], [2.0], [np.nan], [4.0], [np.nan]])
+    if flip_sign:
+      arr *= -1
+    actual = converter.to_metrics(arr)
+    self.assertEqual(actual, expected)
+
+  @parameterized.parameters([
+      dict(flip_sign=True, raise_error=True),
+      dict(flip_sign=False, raise_error=True),
+      dict(flip_sign=True, raise_error=False),
+      dict(flip_sign=False, raise_error=False)
+  ])
+  def test_to_metrics_from_measurements(self, flip_sign: bool,
+                                        raise_error: bool):
+    converter = core.DefaultModelOutputConverter(
+        pyvizier.MetricInformation(
+            name='metric2', goal=pyvizier.ObjectiveMetricGoal.MINIMIZE),
+        flip_sign_for_minimization_metrics=flip_sign,
+        raise_errors_for_missing_metrics=raise_error,
+        dtype=float)
+    measurements = self._measurements
+    ys = converter.convert(measurements)
+    ms = converter.to_metrics(ys)
+    from_ms = np.array([
+        measurements[i].metrics['metric2'].value for i in range(len(ms))
+    ])[:, None]
+    if flip_sign:
+      from_ms *= -1
+    self.assertTrue((from_ms == ys).all())
+
+  @parameterized.parameters(
+      [dict(labels=np.array([[1, 2]])),
+       dict(labels=np.array([[[1, 2]]]))])
+  def test_bad_labels(self, labels: np.ndarray):
+    converter = core.DefaultModelOutputConverter(
+        pyvizier.MetricInformation(
+            name='metric2', goal=pyvizier.ObjectiveMetricGoal.MINIMIZE),
+        flip_sign_for_minimization_metrics=True,
+        raise_errors_for_missing_metrics=True,
+        dtype=float)
+    with self.assertRaises(ValueError):
+      converter.to_metrics(labels)
+
 
 class DefaultModelInputConverterTest(parameterized.TestCase):
 
