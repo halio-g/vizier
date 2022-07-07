@@ -300,7 +300,8 @@ class VizierService(vizier_service_pb2_grpc.VizierServiceServicer):
             study_descriptor=study_descriptor,
             count=request.suggestion_count - len(output_trials))
         try:
-          suggest_decisions = pythia_policy.suggest(suggest_request)
+          suggest_decisions, metadata_delta = pythia_policy.suggest(
+              suggest_request)
           assert len(suggest_decisions
                     ) >= request.suggestion_count - len(output_trials)
         # Leaving a broad catch for now since Pythia can raise any exception.
@@ -312,6 +313,9 @@ class VizierService(vizier_service_pb2_grpc.VizierServiceServicer):
           output_op.done = True
           self.datastore.update_suggestion_operation(output_op)
           return output_op
+
+        # ZZZ_do_something_with(metadata_delta)
+        del metadata_delta  # ZZZ
 
         new_py_trials = [
             pyvizier.Trial(parameters=decision.parameters)

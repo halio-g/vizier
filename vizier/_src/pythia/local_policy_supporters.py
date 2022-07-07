@@ -86,11 +86,14 @@ class LocalPolicyRunner(policy_supporter.PolicySupporter):
   def TimeRemaining(self) -> datetime.timedelta:
     return datetime.timedelta(seconds=100.0)
 
-  def SendMetadata(self, delta: policy_supporter.MetadataDelta) -> None:
+  def _SendMetadata(self, delta: policy.MetadataDelta) -> None:
+    """Assign metadata to trials."""
     for ns in delta.on_study.namespaces():
       self.study_config.metadata.abs_ns(ns).update(delta.on_study.abs_ns(ns))
 
     for tid, deltum in delta.on_trials.items():
+      if not tid > 0:
+        raise ValueError(f'Bad Trial Id: {tid}')
       for ns in deltum.namespaces():
         self._trials[tid - 1].metadata.abs_ns(ns).update(deltum.abs_ns(ns))
 
@@ -158,8 +161,9 @@ class LocalPolicyRunner(policy_supporter.PolicySupporter):
   def SuggestTrials(self, algorithm: policy.Policy,
                     count: int) -> Sequence[vz.Trial]:
     """Suggest and add new trials."""
-    decisions = algorithm.suggest(
+    decisions, metadata_delta = algorithm.suggest(
         policy.SuggestRequest(self.study_descriptor(), count))
+    self._SendMetadata(metadata_delta)
     return self.AddSuggestions([
         vz.TrialSuggestion(d.parameters, metadata=d.metadata) for d in decisions
     ])

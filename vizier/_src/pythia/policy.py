@@ -1,8 +1,10 @@
 """Base class for all PythiaPolicies."""
 
 import abc
+import collections
 from collections import abc as cabc
-from typing import Any, FrozenSet, Iterable, List, Optional, Type, TypeVar
+import dataclasses
+from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Tuple, Type, TypeVar
 
 import attr
 from vizier import pyvizier as vz
@@ -91,6 +93,60 @@ class EarlyStopRequest:
   @property
   def study_config(self) -> vz.StudyConfig:
     return self._study_descriptor.config
+
+
+@dataclasses.dataclass(frozen=True)
+class MetadataDelta:
+  """Carries cumulative delta for a batch metadata update.
+
+  Attributes:
+    on_study: Updates to be made on study-level metadata.
+    on_trials: Maps trial id to updates.
+  """
+
+  on_study: vz.Metadata = dataclasses.field(default_factory=vz.Metadata)
+
+  on_trials: Dict[int, vz.Metadata] = dataclasses.field(
+      default_factory=lambda: collections.defaultdict(vz.Metadata))
+
+  def on_trial(self, trial_id: int) -> vz.Metadata:
+    """Enables self.on_trial(5).ns('namespace')['key'] = value."""
+    return self.on_trials[trial_id]
+
+  # pylint: disable=invalid-name
+  def assign(self,
+             namespace: str,
+             key: str,
+             value: vz.MetadataValue,
+             trial: Optional[vz.Trial] = None,
+             *,
+             trial_id: Optional[int] = None):
+    """Assigns metadata.
+
+    Args:
+      namespace: Namespace of the metadata. See vz.Metadata doc for more
+        details.
+      key:
+      value:
+      trial: If specified, `trial_id` must be None. It behaves the same as when
+        `trial_id=trial.id`, except that `trial` is immediately modified.
+      trial_id: If specified, `trial` must be None. If both `trial` and
+        `trial_id` are None, then the key-value pair will be assigned to the
+        study.
+
+    Raises:
+      ValueError:
+    """
+    if trial is None and trial_id is None:
+      self.on_study.ns(namespace)[key] = value
+    elif trial is not None and trial_id is not None:
+      raise ValueError(
+          'At most one of `trial` and `trial_id` can be specified.')
+    elif trial is not None:
+      self.on_trials[trial.id].ns(namespace)[key] = value
+      trial.metadata.ns(namespace)[key] = value
+    elif trial_id is not None:
+      self.on_trials[trial_id].ns(namespace)[key] = value
 
 
 @attr.define(init=True)
@@ -185,15 +241,17 @@ class Policy(abc.ABC):
   """
 
   @abc.abstractmethod
-  def suggest(self, request: SuggestRequest) -> SuggestDecisions:
+  def suggest(
+      self, request: SuggestRequest) -> Tuple[SuggestDecisions, MetadataDelta]:
     """Compute suggestions that Vizier will eventually hand to the user.
 
     Args:
       request:
 
     Returns:
-      A list of Trials that will be passed on to the user.
-      (See caveats in the SuggestionAnswer proto.)
+      SuggestDecisions: A list of TrialSuggestions that will be passed to the
+        user.  (See caveats in the SuggestionAnswer proto.)
+      MetadataDelta: Metadata to be written to the database.
 
     Raises:
       TemporaryPythiaError:  Generic retryable error.

@@ -5,7 +5,7 @@ API when suggesting trials, but we do for the early stopping in order to
 showcase how the policy supporter should be used.
 """
 import random
-from typing import List
+from typing import List, Tuple
 from vizier import pythia
 from vizier import pyvizier
 
@@ -51,14 +51,17 @@ class RandomPolicy(pythia.Policy):
   def __init__(self, policy_supporter: pythia.PolicySupporter):
     self._policy_supporter = policy_supporter
 
-  def suggest(self, request: pythia.SuggestRequest) -> pythia.SuggestDecisions:
+  def suggest(
+      self, request: pythia.SuggestRequest
+  ) -> Tuple[pythia.SuggestDecisions, pythia.MetadataDelta]:
     """Gets number of Trials to propose, and produces random Trials."""
     suggest_decision_list = []
     for _ in range(request.count):
       parameters = make_random_parameters(request.study_config)
       suggest_decision_list.append(
           pythia.SuggestDecision(parameters=parameters))
-    return pythia.SuggestDecisions(suggest_decision_list)
+    return (pythia.SuggestDecisions(suggest_decision_list),
+            pythia.MetadataDelta())
 
   def early_stop(
       self, request: pythia.EarlyStopRequest) -> List[pythia.EarlyStopDecision]:
