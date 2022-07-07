@@ -5,8 +5,9 @@ This client can be used interchangeably with the Cloud Vizier client.
 
 import datetime
 import functools
+import pickle
 import time
-from typing import Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 from absl import flags
 from absl import logging
@@ -54,6 +55,9 @@ def create_server_stub(
   grpc.channel_ready_future(channel).result()
   logging.info('Secured channel to %s.', service_endpoint)
   return vizier_service_pb2_grpc.VizierServiceStub(channel)
+
+
+Metadata = Mapping[Tuple[str, str], Any]
 
 
 @attr.frozen(init=True)
@@ -312,19 +316,65 @@ class VizierClient:
     _ = future.result()
     logging.info('Study deleted: %s', study_resource_name)
 
-  def get_study_config(
-      self, study_name: Optional[str] = None) -> pyvizier.StudyConfig:
+  def get_study_config(self,
+                       study_resource_name: Optional[str] = None
+                      ) -> pyvizier.StudyConfig:
     """Returns the study config."""
-    if study_name:
-      study_resource_name = study_name
-    else:
-      study_resource_name = resources.StudyResource(self._owner_id,
-                                                    self._study_id).name
+    study_resource_name = study_resource_name or (resources.StudyResource(
+        self._owner_id, self._study_id).name)
     request = vizier_service_pb2.GetStudyRequest(name=study_resource_name)
     future = self._server_stub.GetStudy.future(request)
     response = future.result()
 
     return pyvizier.StudyConfig.from_proto(response.study_spec)
+
+  def update_metadata(self,
+                      metadata: Metadata,
+                      trial_id: Optional[int] = None,
+                      study_resource_name: Optional[str] = None) -> None:
+    """Updates metadata.
+
+    Args:
+      metadata: Metadata, consisting of mappings of tuples (namespace, key) to
+        string/serializable objects.
+      trial_id: Optional trial ID. If unset, this function assumes metadata only
+        contains study-related KeyValues.
+      study_resource_name: An identifier of the study. The full study name will
+        be `owners/{owner_id}/studies/{study_id}`.
+
+    Returns:
+      None.
+
+    Raises:
+      RuntimeError: If server reported an error or if a value could not be
+      pickled.
+    """
+    study_resource_name = study_resource_name or (resources.StudyResource(
+        self._owner_id, self._study_id).name)
+    request = vizier_service_pb2.UpdateMetadataRequest(name=study_resource_name)
+    for ns_key, value in metadata.items():
+      key_value_plus = vizier_service_pb2.UpdateMetadataRequest.KeyValuePlus()
+      if trial_id is not None:
+        key_value_plus.trial_id = str(trial_id)
+      key_value_plus.k_v.ns = ns_key[0]
+      key_value_plus.k_v.key = ns_key[1]
+
+      if isinstance(value, str):
+        key_value_plus.k_v.value = value
+      else:
+        try:
+          pickled_value = pickle.dumps(value)
+        except pickle.PicklingError as error:
+          raise RuntimeError(f'Failed to pickle {value}.') from error
+        key_value_plus.k_v.proto.value = pickled_value
+
+      request.metadata.append(key_value_plus)
+
+    future = self._server_stub.UpdateMetadata.future(request)
+    response = future.result()
+
+    if response.error_details:
+      raise RuntimeError(response.error_details)
 
 
 def create_or_load_study(

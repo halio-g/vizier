@@ -251,6 +251,17 @@ class VizierClientTest(parameterized.TestCase):
         final_accuracy = stored_trial.final_measurement.metrics[0].value
         self.assertEqual(curve[-1], final_accuracy)
 
+  def test_update_metadata(self):
+    study_metadata = {('k_s', 'ns_s'): 'v_s'}
+    self.client.update_metadata(study_metadata)
+
+    # serializable value.
+    study_metadata_complex = {('k_s2', 'ns_s2'): ('picklable', 5)}
+    self.client.update_metadata(study_metadata_complex)
+
+    trial_metadata = {('k_t', 'ns_t'): 'v_t'}
+    self.client.update_metadata(trial_metadata, trial_id=1)
+
 
 if __name__ == '__main__':
   absltest.main()
