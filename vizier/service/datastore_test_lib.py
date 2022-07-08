@@ -225,3 +225,7 @@ class DataStoreTestCase(parameterized.TestCase):
     mutated_trial = ds.get_trial(trials[0].name)
     self.assertEqual(mutated_trial.id, str(trial_metadata[0].trial_id))
     self.assertEqual(list(mutated_trial.metadata), [trial_metadata[0].k_v])
+
+    study_not_exist_name = study.name + 'i_dont_exist'
+    with self.assertRaises(datastore.NotFoundError):
+      ds.update_metadata(study_not_exist_name, [], [])

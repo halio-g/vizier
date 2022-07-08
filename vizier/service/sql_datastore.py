@@ -1,4 +1,5 @@
 """Implementation of SQL Datastore."""
+import copy
 from typing import Callable, Dict, Iterable, List, Optional
 from absl import logging
 
@@ -432,11 +433,14 @@ class SQLDataStore(datastore.DataStore):
     ]).where(self._studies_table.c.study_name == study_name)
     study_result = self._connection.execute(get_study_query)
     row = study_result.fetchone()
-    original_study = study_pb2.Study.FromString(row['serialized_study'])
+    if row:
+      original_study = study_pb2.Study.FromString(row['serialized_study'])
+    else:
+      raise datastore.NotFoundError('No such study:', s_resource.name)
 
     # Update the study with new study_metadata and update database.
     original_study.study_spec.ClearField('metadata')
-    for metadata in study_metadata:
+    for metadata in copy.deepcopy(study_metadata):
       original_study.study_spec.metadata.append(metadata)
     update_study_query = sqla.update(self._studies_table).where(
         self._studies_table.c.study_name == study_name).values(
@@ -447,7 +451,7 @@ class SQLDataStore(datastore.DataStore):
     # the relevant `trial_resources` that will be touched.   We clear them, then
     # loop through the metadata, converting to protos.
     trial_resources: Dict[str, resources.TrialResource] = {}
-    for metadata in trial_metadata:
+    for metadata in copy.deepcopy(trial_metadata):
       clear_metadata_bool = False
       if metadata.trial_id in trial_resources:
         t_resource = trial_resources[metadata.trial_id]
@@ -465,7 +469,11 @@ class SQLDataStore(datastore.DataStore):
       ]).where(self._trials_table.c.trial_name == trial_name)
       trial_result = self._connection.execute(original_trial_query)
       row = trial_result.fetchone()
-      original_trial = study_pb2.Trial.FromString(row['serialized_trial'])
+      if row:
+        original_trial = study_pb2.Trial.FromString(row['serialized_trial'])
+      else:
+        raise datastore.NotFoundError(f'No such trial ({metadata.trial_id}):',
+                                      t_resource.name)
 
       # Edit trial metadata and update database.
       if clear_metadata_bool:

@@ -511,13 +511,13 @@ class NestedDictRAMDataStore(DataStore):
       raise NotFoundError('No such study:', s_resource.name) from e
     # Store Study-related metadata into the database.
     study_node.study_proto.study_spec.ClearField('metadata')
-    for metadata in study_metadata:
+    for metadata in copy.deepcopy(study_metadata):
       study_node.study_proto.study_spec.metadata.append(metadata)
     # Store trial-related metadata in the database. We first create a dict of
     # the relevant `trial_resources` that will be touched. We clear them, then
     # loop through the metadata, converting to protos.
     trial_resources: Dict[str, resources.TrialResource] = {}
-    for metadata in trial_metadata:
+    for metadata in copy.deepcopy(trial_metadata):
       if metadata.trial_id in trial_resources:
         t_resource = trial_resources[metadata.trial_id]
       else:
